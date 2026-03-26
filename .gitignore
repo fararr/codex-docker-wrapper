@@ -1,0 +1,16 @@
+# Dockerized Codex wrapper repo
+# Keep only shared config in version control.
+# Ignore local auth, local state, and writable workspace contents.
+
+coder/.codex/*
+!coder/.codex/config.toml
+
+project_workspace/
+
+.DS_Store
+.vscode/
+.idea/
+
+.env
+.env.*
+!.env.example

@@ -1,0 +1,29 @@
+services:
+  codex:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        CODEX_VERSION: 0.116.0
+
+    image: codex-local:0.116.0
+    container_name: codex-local
+    stdin_open: true
+    tty: true
+    working_dir: /workspace
+
+    volumes:
+      - ./project_workspace:/workspace
+      - ./coder/.codex:/home/node/.codex
+
+    security_opt:
+      - no-new-privileges:true
+
+    cap_drop:
+      - ALL
+
+    pids_limit: 256
+    mem_limit: 4g
+    cpus: 2.0
+
+    command: ["codex"]
