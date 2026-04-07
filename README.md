@@ -38,6 +38,7 @@ This version is written for **public GitHub / repo documentation**, so paths and
 - access is limited to **explicitly mounted directories**
 - approval prompts stay enabled for riskier actions
 - image and Codex CLI version are pinned
+- PHP and Python tooling is available inside the container
 
 ---
 
@@ -76,14 +77,16 @@ Example working directory:
 
 ```text
 ~/codex-docker
-```
+````
 
 Recommended structure:
 
 ```text
 ~/codex-docker/
 ├── Dockerfile
+├── Dockerfile.minimal
 ├── docker-compose.yaml
+├── docker-compose.minimal.yaml
 ├── .gitignore
 ├── coder/
 │   └── .codex/
@@ -94,8 +97,10 @@ Recommended structure:
 
 ### Meaning
 
-- `coder/.codex/` stores Codex config and auth on the host
-- `project_workspace/` is the main writable workspace for Codex
+* `Dockerfile` and `docker-compose.yaml` are the recommended full setup
+* `Dockerfile.minimal` and `docker-compose.minimal.yaml` keep the older minimal variant
+* `coder/.codex/` stores Codex config and auth on the host
+* `project_workspace/` is the main writable workspace for Codex
 
 ---
 
@@ -104,31 +109,62 @@ Recommended structure:
 Create `Dockerfile`:
 
 ```dockerfile
-FROM node:22.12.0-bookworm-slim
+FROM node:24-bookworm-slim
 
-ARG CODEX_VERSION=0.116.0
+ARG CODEX_VERSION=0.118.0
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends \
-        bash \
-        ca-certificates \
-        curl \
-        git \
-        less \
-        procps \
-        ripgrep \
-        tini \
+ENV DEBIAN_FRONTEND=noninteractive
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    ca-certificates \
+    composer \
+    curl \
+    fd-find \
+    git \
+    jq \
+    less \
+    make \
+    patch \
+    php-cli \
+    php-curl \
+    php-intl \
+    php-mbstring \
+    php-sqlite3 \
+    php-xml \
+    php-zip \
+    procps \
+    python3 \
+    python3-pip \
+    python3-venv \
+    ripgrep \
+    shellcheck \
+    sqlite3 \
+    tini \
+    tree \
+    unzip \
+    zip \
     && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g @openai/codex@${CODEX_VERSION} \
     && npm cache clean --force
 
-RUN mkdir -p /workspace /home/node/.codex \
+RUN mkdir -p /workspace /home/node/.codex /home/node/.local/bin \
     && chown -R node:node /workspace /home/node
 
 USER node
+
 ENV HOME=/home/node
+ENV PATH=/home/node/.local/bin:/usr/local/bin:/usr/bin:/bin
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+
 WORKDIR /workspace
+
+RUN php -v \
+    && composer --version \
+    && python3 --version \
+    && codex --version
 
 ENTRYPOINT ["/usr/bin/tini", "--"]
 CMD ["codex"]
@@ -136,11 +172,12 @@ CMD ["codex"]
 
 ### Why this version
 
-- pinned Node base image
-- pinned Codex CLI version
-- uses the existing `node` user from the official image
-- avoids UID/GID conflicts
-- uses `tini` for cleaner process handling
+* uses stable Node LTS base image
+* pins Codex CLI version
+* includes practical PHP and Python CLI tooling
+* uses the existing `node` user from the official image
+* avoids UID/GID conflicts
+* uses `tini` for cleaner process handling
 
 ---
 
@@ -155,17 +192,29 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        CODEX_VERSION: 0.116.0
+        CODEX_VERSION: "0.118.0"
 
-    image: codex-local:0.116.0
+    image: codex-local:0.118.0
     container_name: codex-local
+
+    working_dir: /workspace
+
     stdin_open: true
     tty: true
-    working_dir: /workspace
+
+    user: "node"
 
     volumes:
       - ./project_workspace:/workspace
       - ./coder/.codex:/home/node/.codex
+
+      # Optional read-only reference repo/example docs:
+      # - ./reference_repo:/reference:ro
+
+    environment:
+      HOME: /home/node
+      PYTHONDONTWRITEBYTECODE: "1"
+      PYTHONUNBUFFERED: "1"
 
     security_opt:
       - no-new-privileges:true
@@ -177,16 +226,19 @@ services:
     mem_limit: 4g
     cpus: 2.0
 
+    restart: "no"
+
     command: ["codex"]
 ```
 
 ### What this does
 
-- mounts `./project_workspace` as `/workspace`
-- mounts `./coder/.codex` as `/home/node/.codex`
-- drops extra Linux capabilities
-- prevents privilege escalation
-- keeps the container interactive and simple
+* mounts `./project_workspace` as `/workspace`
+* mounts `./coder/.codex` as `/home/node/.codex`
+* runs as non-root user `node`
+* drops extra Linux capabilities
+* prevents privilege escalation
+* keeps the container interactive and simple
 
 ---
 
@@ -212,11 +264,11 @@ trust_level = "trusted"
 
 ### Meaning
 
-- `model = "gpt-5.4"` sets the default model
-- `approval_policy = "on-request"` asks before higher-risk actions
-- `sandbox_mode = "workspace-write"` is the normal editing mode
-- `cli_auth_credentials_store = "file"` stores auth in `.codex/auth.json`
-- `trust_level = "trusted"` marks `/workspace` as a trusted project root
+* `model = "gpt-5.4"` sets the default model
+* `approval_policy = "on-request"` asks before higher-risk actions
+* `sandbox_mode = "workspace-write"` is the normal editing mode
+* `cli_auth_credentials_store = "file"` stores auth in `.codex/auth.json`
+* `trust_level = "trusted"` marks `/workspace` as a trusted project root
 
 ---
 
@@ -303,6 +355,10 @@ Useful checks inside:
 ```bash
 whoami
 pwd
+php -v
+python3 --version
+composer --version
+codex --version
 ls -la /workspace
 ls -la /home/node/.codex
 ```
@@ -423,17 +479,17 @@ Example:
 
 Usually reasonable to approve:
 
-- edits you explicitly requested in `/workspace`
-- local tests or formatters in the workspace
-- normal source file creation and updates
+* edits you explicitly requested in `/workspace`
+* local tests or formatters in the workspace
+* normal source file creation and updates
 
 Pause and inspect more carefully:
 
-- package installs
-- network-heavy actions
-- mass deletes
-- git commands with side effects
-- anything mentioning unexpected paths
+* package installs
+* network-heavy actions
+* mass deletes
+* git commands with side effects
+* anything mentioning unexpected paths
 
 ---
 
@@ -441,20 +497,20 @@ Pause and inspect more carefully:
 
 If Codex asks to run something “outside the sandbox”, that means:
 
-- outside Codex’s **inner** sandbox
-- but still **inside Docker**
+* outside Codex’s **inner** sandbox
+* but still **inside Docker**
 
 It does **not** mean:
 
-- outside the container
-- full access to macOS
-- automatic access to unmounted host paths
+* outside the container
+* full access to macOS
+* automatic access to unmounted host paths
 
 It still only has access to:
 
-- container paths
-- mounted directories
-- container network
+* container paths
+* mounted directories
+* container network
 
 ### Important rule
 
@@ -476,11 +532,11 @@ error getting credentials - err: exec: "docker-credential-desktop": executable f
 
 Cause:
 
-- Docker CLI is configured to use a missing credential helper
+* Docker CLI is configured to use a missing credential helper
 
 Fix:
 
-- remove the stale `credsStore` entry from `~/.docker/config.json`
+* remove the stale `credsStore` entry from `~/.docker/config.json`
 
 This is a Docker client problem, not a Codex auth problem.
 
@@ -496,12 +552,12 @@ groupadd: GID '1000' already exists
 
 Cause:
 
-- the official Node image already contains the `node` user/group using UID/GID 1000
+* the official Node image already contains the `node` user/group using UID/GID 1000
 
 Fix:
 
-- do not create a custom user
-- use the existing `node` user
+* do not create a custom user
+* use the existing `node` user
 
 That is why the final setup uses:
 
@@ -512,20 +568,27 @@ ENV HOME=/home/node
 
 ---
 
-### Bubblewrap / inner sandbox problems
+### Bubblewrap / inner sandbox notes
 
-Bubblewrap-based sandboxing may be unreliable in Docker Desktop.
+Codex may use an OS-level local sandbox, but Bubblewrap availability inside Docker is environment-dependent.
 
-Problems may include:
+Checks:
 
-- namespace permission errors
-- `bwrap: Unknown option --argv0`
+* `bwrap --version`
+* minimal `bwrap` sandbox command
+* `unshare -U true` to verify user namespaces
 
-Final practical decision:
+Common issues:
 
-- do **not** install `bwrap`
-- keep approvals enabled
-- rely on Docker as the main containment boundary
+* namespace permission errors
+* `Operation not permitted`
+* `bwrap: Unknown option --argv0` (usually Bubblewrap version mismatch)
+
+Practical decision for this Docker setup:
+
+* do not depend on Bubblewrap
+* keep Codex approvals enabled
+* rely on Docker mounts and container restrictions as the main containment boundary
 
 ---
 
@@ -533,13 +596,14 @@ Final practical decision:
 
 This is the stable practical setup for Dockerized Codex on macOS:
 
-- Codex runs only in Docker
-- auth is stored locally in `./coder/.codex`
-- work happens in `./project_workspace`
-- access is limited to explicitly mounted directories
-- approvals remain enabled
-- Docker is the real containment layer
-- Bubblewrap is intentionally not used in this setup
+* Codex runs only in Docker
+* auth is stored locally in `./coder/.codex`
+* work happens in `./project_workspace`
+* access is limited to explicitly mounted directories
+* approvals remain enabled
+* Docker is the real containment layer
+* Bubblewrap is intentionally not required in this setup
+* PHP and Python tooling is included in the full image
 
 ### One-line summary
 
