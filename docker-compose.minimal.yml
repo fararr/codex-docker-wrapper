@@ -4,28 +4,17 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        CODEX_VERSION: "0.118.0"
+        CODEX_VERSION: 0.116.0
 
-    image: codex-local:0.118.0
+    image: codex-local:0.116.0
     container_name: codex-local
-
-    working_dir: /workspace
-
     stdin_open: true
     tty: true
-
-    user: "node"
+    working_dir: /workspace
 
     volumes:
       - ./project_workspace:/workspace
-
-      # Optional read-only reference repo/example docs:
-      # - ./reference_repo:/reference:ro
-
-    environment:
-      HOME: /home/node
-      PYTHONDONTWRITEBYTECODE: "1"
-      PYTHONUNBUFFERED: "1"
+      - ./coder/.codex:/home/node/.codex
 
     security_opt:
       - no-new-privileges:true
@@ -36,7 +25,5 @@ services:
     pids_limit: 256
     mem_limit: 4g
     cpus: 2.0
-
-    restart: "no"
 
     command: ["codex"]
