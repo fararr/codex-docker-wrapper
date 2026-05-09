@@ -1,7 +1,12 @@
-model = "gpt-5.4"
+model = "gpt-5.5"
 approval_policy = "on-request"
 sandbox_mode = "workspace-write"
 cli_auth_credentials_store = "file"
+model_reasoning_effort = "high"
 
 [projects."/workspace"]
 trust_level = "trusted"
+
+[sandbox_workspace_write]
+writable_roots = ["/workspace"]
+network_access = false

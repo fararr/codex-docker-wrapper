@@ -4,9 +4,9 @@ services:
       context: .
       dockerfile: Dockerfile
       args:
-        CODEX_VERSION: "0.118.0"
+        CODEX_VERSION: "0.128.0"
 
-    image: codex-local:0.118.0
+    image: codex-local:0.128.0
     container_name: codex-local
 
     working_dir: /workspace
@@ -17,7 +17,14 @@ services:
     user: "node"
 
     volumes:
-      - ./project_workspace:/workspace
+      # example
+      # - ./project_workspace:/workspace
+
+      # project
+      # - ../www/laravel-site/web-site:/workspace
+
+      # Codex space
+      - ./coder/.codex:/home/node/.codex
 
       # Optional read-only reference repo/example docs:
       # - ./reference_repo:/reference:ro
